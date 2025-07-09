@@ -111,20 +111,16 @@ wss.on('connection', (ws: AuthWebSocket, req) => {
 
         switch (type) {
             case 'join':
-                if (ws.currentRoom) {
-                    sub.unsubscribe(ws.currentRoom);
-                }
+                if (ws.currentRoom) sub.unsubscribe(ws.currentRoom);
                 ws.currentRoom = payload.roomId;
-
-                // THE FIX: Add a safety check to ensure ws.currentRoom is a valid string.
+                
+                // THE FIX: Add a safety check to ensure ws.currentRoom is a valid string
+                // before passing it to the Redis subscribe method.
                 if (ws.currentRoom) {
                     sub.subscribe(ws.currentRoom, async (err) => {
-                        if (err) {
-                            return console.error('Redis subscription failed', err);
-                        }
-                        console.log(`${ws.username} joined room: ${ws.currentRoom}`);
+                        if (err) return console.error('Redis subscription failed', err);
                         
-                        // Fetch history only after successfully subscribing.
+                        // Fetch history only after successfully subscribing
                         const history = await Message.find({ roomId: ws.currentRoom }).sort({ createdAt: 1 }).limit(50).lean();
                         const formattedHistory = history.map(formatMessageForFrontend);
                         ws.send(JSON.stringify({ type: 'history', payload: formattedHistory }));
@@ -157,9 +153,7 @@ wss.on('connection', (ws: AuthWebSocket, req) => {
     });
 
     ws.on('close', () => {
-        if (ws.currentRoom) {
-            sub.unsubscribe(ws.currentRoom);
-        }
+        if (ws.currentRoom) sub.unsubscribe(ws.currentRoom);
         console.log(`User disconnected: ${ws.username}`);
     });
 });
