@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Send } from 'lucide-react';
 
+// This interface now correctly includes all the necessary props.
 interface MessageInputProps {
     onSend: (text: string) => void;
-    // THE FIX: Add props to notify the parent when typing starts or stops.
     onStartTyping: () => void;
     onStopTyping: () => void;
 }
@@ -32,12 +32,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend, onStartTypin
         }
     };
 
-    // THE FIX: Add effect to handle typing events.
     useEffect(() => {
         if (input) {
             onStartTyping(); // Notify parent that typing has started
             
-            // Clear previous timeout if it exists
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
             }
@@ -48,7 +46,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend, onStartTypin
             }, 2000); // 2-second delay
         }
 
-        // Cleanup timeout on component unmount
         return () => {
             if (typingTimeoutRef.current) {
                 clearTimeout(typingTimeoutRef.current);
