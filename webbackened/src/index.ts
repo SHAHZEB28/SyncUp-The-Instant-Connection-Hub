@@ -3,7 +3,7 @@ import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis'; // Import RedisOptions
 import cors from 'cors';
 import mongoose from 'mongoose';
 
@@ -23,20 +23,14 @@ const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true },
 }, { timestamps: true });
-
 const User = mongoose.model('User', userSchema);
 
 const messageSchema = new mongoose.Schema({
     roomId: { type: String, required: true, index: true },
-    sender: {
-        id: { type: String },
-        name: { type: String, required: true },
-        avatar: { type: String }
-    },
+    sender: { id: { type: String }, name: { type: String, required: true }, avatar: { type: String } },
     text: { type: String, required: true },
     timestamp: { type: String, required: true }
 }, { timestamps: true });
-
 const Message = mongoose.model('Message', messageSchema);
 
 // --- Express App Setup ---
@@ -45,8 +39,18 @@ app.use(express.json());
 app.use(cors({ origin: FRONTEND_URL }));
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
-const pub = new Redis(REDIS_URL);
-const sub = new Redis(REDIS_URL);
+
+// THE FIX: Define explicit TLS options for the Redis connection.
+// This is required to connect to cloud services like Upstash.
+const redisOptions: RedisOptions = {
+    tls: {
+      rejectUnauthorized: false
+    }
+};
+
+// Use the options when creating the Redis clients.
+const pub = new Redis(REDIS_URL, redisOptions);
+const sub = new Redis(REDIS_URL, redisOptions);
 
 interface AuthWebSocket extends WebSocket {
     userId: string;
@@ -113,21 +117,15 @@ wss.on('connection', (ws: AuthWebSocket, req) => {
             case 'join':
                 if (ws.currentRoom) sub.unsubscribe(ws.currentRoom);
                 ws.currentRoom = payload.roomId;
-                
-                // THE FIX: Add a safety check to ensure ws.currentRoom is a valid string
-                // before passing it to the Redis subscribe method.
                 if (ws.currentRoom) {
                     sub.subscribe(ws.currentRoom, async (err) => {
                         if (err) return console.error('Redis subscription failed', err);
-                        
-                        // Fetch history only after successfully subscribing
                         const history = await Message.find({ roomId: ws.currentRoom }).sort({ createdAt: 1 }).limit(50).lean();
                         const formattedHistory = history.map(formatMessageForFrontend);
                         ws.send(JSON.stringify({ type: 'history', payload: formattedHistory }));
                     });
                 }
                 break;
-
             case 'chat':
                 if (ws.currentRoom) {
                     const messagePayload = {
@@ -142,7 +140,6 @@ wss.on('connection', (ws: AuthWebSocket, req) => {
                     pub.publish(ws.currentRoom, JSON.stringify({ type: 'message', payload: formattedMessage }));
                 }
                 break;
-            
             case 'clear_chat':
                  if (ws.currentRoom) {
                     await Message.deleteMany({ roomId: ws.currentRoom });
